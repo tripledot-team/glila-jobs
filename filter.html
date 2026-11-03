@@ -1,0 +1,42 @@
+<!doctype html><meta charset="utf-8"><title>filter</title><body><script>
+window.BOT=true;
+const GRAY='#8a8a8a',IMG_RE=/^https:\/\/otzrouieonprlkkscvie\.supabase\.co\/storage\/v1\/object\/public\/forum\//;
+let FA=null;
+function loadFA(){return FA||(FA=new Promise((ok,no)=>{const sc=document.createElement('script');sc.src='/vendor/face-api.js';sc.onload=async()=>{try{const tf=faceapi.tf;try{await tf.setBackend('webgl');await tf.ready()}catch(e){await tf.setBackend('cpu');await tf.ready()}console.log('face backend',tf.getBackend());await faceapi.nets.ssdMobilenetv1.loadFromUri('/vendor/models');await faceapi.nets.tinyFaceDetector.loadFromUri('/vendor/models');ok(faceapi)}catch(e){FA=null;no(e)}};sc.onerror=()=>{FA=null;no(new Error('load'))};document.head.append(sc)}))}
+const iou=(a,b)=>{const x=Math.max(a.x,b.x),y=Math.max(a.y,b.y),X=Math.min(a.x+a.w,b.x+b.w),Y=Math.min(a.y+a.h,b.y+b.h),i=Math.max(0,X-x)*Math.max(0,Y-y);return i/(a.w*a.h+b.w*b.h-i)};
+async function findFaces(cv){const fa=await loadFA(),W=cv.width,H=cv.height,found=[];
+ const regions=[[0,0,W,H]];((fa.tf.getBackend()==='webgl'||window.BOT)?[[2,.6],[3,.42]]:[[2,.6]]).forEach(([n,f])=>{const tw=W*f,th=H*f;for(let i=0;i<n;i++)for(let j=0;j<n;j++){regions.push([n===1?0:i*(W-tw)/(n-1),n===1?0:j*(H-th)/(n-1),tw,th])}});
+ for(const [rx,ry,rw,rh] of regions){const t=document.createElement('canvas');t.width=Math.round(rw);t.height=Math.round(rh);t.getContext('2d').drawImage(cv,rx,ry,rw,rh,0,0,t.width,t.height);
+  const sets=[await fa.detectAllFaces(t,new fa.SsdMobilenetv1Options({minConfidence:.22}))];if((fa.tf.getBackend()==='webgl'||window.BOT))sets.push(await fa.detectAllFaces(t,new fa.TinyFaceDetectorOptions({inputSize:416,scoreThreshold:.25})));
+  sets.forEach(a=>a.forEach(d=>{const b=d.box;if(b.width>6&&b.height>6&&!(rw<W&&b.width>.6*rw&&b.height>.6*rh))found.push({x:b.x+rx,y:b.y+ry,w:b.width,h:b.height,s:d.score||0})}))}
+ const out=[];found.sort((a,b)=>b.w*b.h-a.w*a.h).forEach(f=>{if(!out.some(o=>iou(o,f)>.25))out.push(f)});return out}
+
+/* person / body detector (on-device, centernet COCO): covers whole people, not just faces */
+let HU=null;
+function loadHuman(){return HU||(HU=new Promise((ok,no)=>{const sc=document.createElement('script');sc.src='/vendor/human/human.js';sc.onload=async()=>{try{const H=window.Human&&(window.Human.Human||window.Human);const h=new H({modelBasePath:'/vendor/human/models/',backend:'webgl',debug:false,face:{enabled:false},body:{enabled:false},hand:{enabled:false},gesture:{enabled:false},segmentation:{enabled:false},filter:{enabled:false},object:{enabled:true,modelPath:'nanodet.json',minConfidence:.15,maxDetected:40,iouThreshold:.4}});await h.load();await h.warmup().catch(()=>{});ok(h)}catch(e){no(e)}};sc.onerror=()=>no(new Error('human'));document.head.append(sc)}).catch(e=>{HU=null;throw e}))}
+async function findPeople(cv){const h=await loadHuman(),W=cv.width,H=cv.height,out=[];
+ const regions=[[0,0,W,H]];if(W>500&&H>500){const tw=W*.62,th=H*.62;for(let i=0;i<2;i++)for(let j=0;j<2;j++)regions.push([i*(W-tw),j*(H-th),tw,th])}
+ for(const [rx,ry,rw,rh] of regions){const t=document.createElement('canvas');t.width=Math.round(rw);t.height=Math.round(rh);t.getContext('2d').drawImage(cv,rx,ry,rw,rh,0,0,t.width,t.height);
+  const r=await h.detect(t);(r.object||[]).forEach(o=>{if(o.label!=='person')return;const [x,y,w,hh]=o.box;if(w<8||hh<8)return;if(!(o.score>=.4||(o.score>=.18&&w*hh>=.008*rw*rh)))return;if(rw<W&&w>.97*rw&&hh>.97*rh)return;out.push({x:x+rx,y:y+ry,w,h:hh})})}
+ const res=[];out.sort((a,b)=>b.w*b.h-a.w*a.h).forEach(f=>{if(!res.some(o=>iou(o,f)>.5))res.push(f)});
+ return res.map(p=>{const px=p.w*.05,py=p.h*.04;return{x:Math.max(0,p.x-px),y:Math.max(0,p.y-py),w:Math.min(W,p.w+2*px),h:Math.min(H,p.h+2*py)}})}
+const inBox=(f,p)=>{const cx=f.x+f.w/2,cy=f.y+f.h/2;return cx>=p.x&&cx<=p.x+p.w&&cy>=p.y&&cy<=p.y+p.h};
+function drawCover(ctx,r){const rr=Math.min(r.w,r.h)*.25;ctx.fillStyle=GRAY;ctx.beginPath();if(ctx.roundRect)ctx.roundRect(r.x,r.y,r.w,r.h,rr);else ctx.rect(r.x,r.y,r.w,r.h);ctx.fill()}
+const grow=f=>({x:f.x-f.w*.28,y:f.y-f.h*.4,w:f.w*1.56,h:f.h*1.75});
+async function toSmallBlob(cv){const sizes=[1280,1024,800,640,480];let last=null;for(const mx of sizes){const k=Math.min(1,mx/Math.max(cv.width,cv.height)),c=document.createElement('canvas');c.width=Math.round(cv.width*k);c.height=Math.round(cv.height*k);const x=c.getContext('2d');x.imageSmoothingQuality='high';x.drawImage(cv,0,0,c.width,c.height);
+  for(const q of[.72,.55,.42,.32]){const b=await new Promise(r=>c.toBlob(r,'image/webp',q));if(!b)continue;last=b;if(b.size<=90*1024&&b.type==='image/webp')return b}}
+ if(last&&last.type==='image/webp'&&last.size<=190*1024)return last;const c=document.createElement('canvas');const k=Math.min(1,640/Math.max(cv.width,cv.height));c.width=Math.round(cv.width*k);c.height=Math.round(cv.height*k);c.getContext('2d').drawImage(cv,0,0,c.width,c.height);return new Promise(r=>c.toBlob(r,'image/jpeg',.55))}
+const loadImgSrc=src=>new Promise((ok,no)=>{const i=new Image();i.onload=()=>ok(i);i.onerror=()=>no(new Error('img'));i.src=src});
+const b64=b=>new Promise(r=>{const f=new FileReader();f.onload=()=>r(f.result.split(',')[1]);f.readAsDataURL(b)});
+/* same decision logic as the site's own photo filter */
+window.coverImage=async function(dataUrl){
+ const im=await loadImgSrc(dataUrl),k=Math.min(1,1280/Math.max(im.naturalWidth,im.naturalHeight)),base=document.createElement('canvas');
+ base.width=Math.round(im.naturalWidth*k);base.height=Math.round(im.naturalHeight*k);base.getContext('2d').drawImage(im,0,0,base.width,base.height);
+ const T0=Date.now();const fr=await findFaces(base);console.log('faces',fr.length,Date.now()-T0,'ms');let ppl=null;try{ppl=await findPeople(base)}catch(e){console.warn('person detector unavailable',e);throw e}
+ console.log('people',ppl.length,Date.now()-T0,'ms');const keep=fr.filter(f=>f.s>=.55||ppl.some(p=>inBox(f,p)));const loose=keep.filter(f=>!ppl.some(p=>inBox(f,p)));const faces=loose.map(grow).concat(ppl);
+ const out=document.createElement('canvas');out.width=base.width;out.height=base.height;const x=out.getContext('2d');x.drawImage(base,0,0);faces.forEach(r=>drawCover(x,r));
+ const blob=await toSmallBlob(out),raw=faces.length?await toSmallBlob(base):null;
+ return{faces:faces.length,type:blob.type,blob:await b64(blob),raw:raw?await b64(raw):null,rawType:raw?raw.type:null};
+};
+window.READY=true;
+</script>
