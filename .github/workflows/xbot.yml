@@ -1,0 +1,30 @@
+name: X mirror
+on:
+  schedule:
+    - cron: '*/10 * * * *'
+  workflow_dispatch:
+concurrency: xbot
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 20 }
+      - name: Install
+        run: |
+          npm install --no-audit --no-fund
+          npx playwright install --with-deps chromium
+      - name: Get the filter files from the live site
+        run: |
+          mkdir -p vendor/models vendor/human/models
+          B=https://glila.bucherim.com/vendor
+          curl -fsSL $B/face-api.js -o vendor/face-api.js
+          for f in ssd_mobilenetv1_model-weights_manifest.json ssd_mobilenetv1_model.bin tiny_face_detector_model-weights_manifest.json tiny_face_detector_model.bin; do curl -fsSL $B/models/$f -o vendor/models/$f; done
+          curl -fsSL $B/human/human.js -o vendor/human/human.js
+          for f in nanodet.json nanodet.bin; do curl -fsSL $B/human/models/$f -o vendor/human/models/$f; done
+      - name: Run
+        env:
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+        run: node xbot.js
