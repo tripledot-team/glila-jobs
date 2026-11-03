@@ -8,7 +8,7 @@ const {createClient}=require('@supabase/supabase-js');
 
 const SB_URL=process.env.SUPABASE_URL||'https://otzrouieonprlkkscvie.supabase.co';
 const KEY=process.env.SUPABASE_SERVICE_KEY;
-const HANDLE=(process.env.X_HANDLE||'Osint613');
+const HANDLES=(process.env.X_HANDLES||'Osint613,visegrad24').split(',').map(x=>x.trim()).filter(Boolean);
 const SITE='https://glila.bucherim.com';
 if(!KEY){console.error('Missing SUPABASE_SERVICE_KEY secret');process.exit(1)}
 const sb=createClient(SB_URL,KEY,{auth:{persistSession:false,autoRefreshToken:false}});
@@ -42,9 +42,7 @@ if(require.main!==module)return;
 const mime={'.html':'text/html','.js':'text/javascript','.json':'application/json'};
 function serve(){return new Promise(ok=>{const s=http.createServer((q,r)=>{const f=path.join(__dirname,decodeURIComponent(q.url.split('?')[0]));fs.readFile(f,(e,d)=>{if(e){r.writeHead(404);return r.end()}r.writeHead(200,{'content-type':mime[path.extname(f)]||'application/octet-stream'});r.end(d)})}).listen(0,()=>ok(s))})}
 
-(async()=>{
- const srv=await serve(),port=srv.address().port;
- const br=await chromium.launch({args:['--use-angle=swiftshader','--use-gl=angle','--enable-unsafe-swiftshader','--ignore-gpu-blocklist','--enable-webgl']});
+async function runOne(HANDLE,br,port){
  try{
   /* 1) read the account's public timeline (same page X embeds use) */
   const feedPg=await br.newPage({userAgent:'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124 Safari/537.36',locale:'en-US'});
@@ -125,6 +123,11 @@ function serve(){return new Promise(ok=>{const s=http.createServer((q,r)=>{const
     await mark(ins.data.id);log('posted',t.id_str,'->',ins.data.id,images.length,'photos',quote?'(quote)':'');
    }catch(e){log('failed',t.id_str,e.message||e)}
   }
- }catch(e){log('error',e.message||e);process.exitCode=1}
+ }catch(e){log('error',HANDLE,e.message||e);process.exitCode=1}
+}
+(async()=>{
+ const srv=await serve(),port=srv.address().port;
+ const br=await chromium.launch({args:['--use-angle=swiftshader','--use-gl=angle','--enable-unsafe-swiftshader','--ignore-gpu-blocklist','--enable-webgl']});
+ try{for(const H of HANDLES){log('--- account',H);await runOne(H,br,port);await new Promise(r=>setTimeout(r,3000))}}
  finally{await br.close();srv.close()}
 })();
