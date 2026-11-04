@@ -119,6 +119,9 @@ async function runOne(HANDLE,br,port){
     const body=text.length>Array.from(title).length?text:null;
     const row={author:st.user_id,community,title,body,...(images.length?{images,image_url:images[0],orig_paths:origs}:{}),...(quote?{quote_post:quote}:{})};
     const ins=await sb.from('forum_posts').insert(row).select('id').single();
+    if(ins.error&&/content_flagged/.test(ins.error.message||'')){
+     const hold=await sb.from('forum_flagged').insert({user_id:st.user_id,kind:'post',payload:{community,title,body,...(images.length?{images,image_url:images[0],orig_paths:origs}:{})},preview:(title+'\n'+(body||'')).slice(0,500),reason:String(ins.error.message).replace(/^.*content_flagged:\s*/,'').slice(0,60)});
+     if(hold.error)throw hold.error;await mark(null);log('held by word filter',t.id_str);continue}
     if(ins.error)throw ins.error;
     await mark(ins.data.id);log('posted',t.id_str,'->',ins.data.id,images.length,'photos',quote?'(quote)':'');
    }catch(e){log('failed',t.id_str,e.message||e)}
