@@ -115,8 +115,9 @@ async function runOne(HANDLE,br,port){
     if(!text&&!images.length){log('skip',t.id_str,'empty');await mark(null);continue}
     let quote=null;
     if(d.quoteOf){const q=(await sb.from('forum_x_seen').select('post_id').eq('tweet_id',d.quoteOf).maybeSingle()).data;quote=q&&q.post_id||null}
-    const title=Array.from(text.split('\n')[0]||'Photo').slice(0,120).join('').trim()||'Photo';
-    const body=text.length>Array.from(title).length?text:null;
+    const flat=text.replace(/\s+/g,' ').trim();   /* X posts have no titles: the title is just the start of the text (Glila hides it when it repeats the text) */
+    const cut=Array.from(flat);const title=(cut.length>110?cut.slice(0,110).join('').replace(/\s+\S*$/,'')+'…':flat)||'Photo';
+    const body=text||null;
     const row={author:st.user_id,community,title,body,...(images.length?{images,image_url:images[0],orig_paths:origs}:{}),...(quote?{quote_post:quote}:{})};
     const ins=await sb.from('forum_posts').insert(row).select('id').single();
     if(ins.error&&/content_flagged/.test(ins.error.message||'')){
