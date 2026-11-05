@@ -34,14 +34,21 @@ const headOf=f=>{const w=f.w*1.75,h=f.h*2.0;return{x:f.x+f.w/2-w/2,y:f.y-f.h*.6,
 const bodyOf=f=>{const w=f.w*2.8;return{x:f.x+f.w/2-w/2,y:f.y+f.h*.7,w,h:f.h*3.6}};
 const inAny=(f,rs)=>{const cx=f.x+f.w/2,cy=f.y+f.h/2;return rs.some(r=>cx>=r.x&&cx<=r.x+r.w&&cy>=r.y&&cy<=r.y+r.h)};
 /* v2 filter: big head + body covers, then re-checks the covered picture and covers any face that is still visible */
-async function buildCovers(base,strict){const W=base.width,H=base.height;const fr=await findFaces(base);let ppl=[];try{ppl=await findPeople(base)}catch(e){if(strict)throw e;console.warn('person detector unavailable',e)}
+async function buildCovers(base,strict,mode){if(mode==='body')return buildCoversBody(base,strict);const W=base.width,H=base.height;
+ /* gentle mode: only prominent faces get a cover over the head; tiny / background faces and bodies are left alone */
+ const big=f=>f.s>=.5&&(f.h>=.045*H||f.w*f.h>=.003*W*H),faceOf=f=>({x:f.x-f.w*.2,y:f.y-f.h*.3,w:f.w*1.4,h:f.h*1.5});
+ const fr=await findFaces(base);let cv=fr.filter(big).map(f=>clampR(faceOf(f),W,H));
+ for(let pass=0;pass<1&&cv.length;pass++){const t=document.createElement('canvas');t.width=W;t.height=H;const x=t.getContext('2d');x.drawImage(base,0,0);cv.forEach(r=>drawCover(x,r));
+  const left=(await findFaces(t,true)).filter(f=>big(f)&&f.s>=.55&&!inAny(f,cv));if(!left.length)break;left.forEach(f=>cv.push(clampR(faceOf(f),W,H)))}
+ return cv.filter(r=>r.w>2&&r.h>2)}
+async function buildCoversBody(base,strict){const W=base.width,H=base.height;const fr=await findFaces(base);let ppl=[];try{ppl=await findPeople(base)}catch(e){if(strict)throw e;console.warn('person detector unavailable',e)}
  const keep=fr.filter(f=>f.s>=.4||ppl.some(p=>inBox(f,p)));let cv=ppl.map(p=>clampR(p,W,H));
  keep.forEach(f=>{cv.push(clampR(headOf(f),W,H));if(!ppl.some(p=>inBox(f,p)))cv.push(clampR(bodyOf(f),W,H))});
  for(let pass=0;pass<2;pass++){const t=document.createElement('canvas');t.width=W;t.height=H;const x=t.getContext('2d');x.drawImage(base,0,0);cv.forEach(r=>drawCover(x,r));
   const left=(await findFaces(t,true)).filter(f=>f.s>=.35&&!inAny(f,cv));if(!left.length)break;left.forEach(f=>{cv.push(clampR(headOf(f),W,H));cv.push(clampR(bodyOf(f),W,H))})}
  if(window.DBG)console.log('covers',JSON.stringify({faces:fr.map(f=>[f.x|0,f.y|0,f.w|0,f.h|0,+f.s.toFixed(2)]),ppl:ppl.map(p=>[p.x|0,p.y|0,p.w|0,p.h|0]),cv:cv.map(r=>[r.x|0,r.y|0,r.w|0,r.h|0])}));
  return cv.filter(r=>r.w>2&&r.h>2)}
-function tooMany(f,W,H){return f.length>=6||f.reduce((s,r)=>s+r.w*r.h,0)>.6*W*H}
+function tooMany(f,W,H){return f.length>=10||f.reduce((s,r)=>s+r.w*r.h,0)>.7*W*H}
 function blurAll(base){const W=base.width,H=base.height,o=document.createElement('canvas');o.width=W;o.height=H;const x=o.getContext('2d'),s=document.createElement('canvas');s.width=Math.max(8,Math.round(W/40));s.height=Math.max(8,Math.round(H/40));s.getContext('2d').drawImage(base,0,0,s.width,s.height);x.imageSmoothingEnabled=true;x.imageSmoothingQuality='high';x.drawImage(s,0,0,W,H);x.fillStyle='rgba(60,60,64,.72)';x.fillRect(0,0,W,H);
  const u=Math.min(W,H),c=u*.13,cx=W/2,cy=H/2-u*.08;x.strokeStyle='#fff';x.lineWidth=u*.035;x.lineCap='round';x.beginPath();x.moveTo(cx-c,cy-c);x.lineTo(cx+c,cy+c);x.moveTo(cx+c,cy-c);x.lineTo(cx-c,cy+c);x.stroke();
  x.fillStyle='#fff';x.textAlign='center';x.textBaseline='middle';x.font='700 '+Math.round(u*.05)+'px Heebo,Arial,sans-serif';x.fillText('Hidden: too many faces',cx,cy+u*.28,W*.9);x.font='500 '+Math.round(u*.038)+'px Heebo,Arial,sans-serif';x.fillText('תמונה מוסתרת · הנחיות גלילה',cx,cy+u*.35,W*.9);return o}
