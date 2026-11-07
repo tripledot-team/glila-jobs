@@ -72,7 +72,7 @@ async function runOne(HANDLE,br,port){
    const cu=await sb.auth.admin.createUser({email,password:pw,email_confirm:true,user_metadata:{username:HANDLE}});
    if(cu.error)throw cu.error;
    const uid=cu.data.user.id;
-   await sb.from('profiles').upsert({id:uid,username:HANDLE,verified:true});
+await sb.from('profiles').upsert({id:uid,username:HANDLE,verified:true,is_bot:true});
    if(user.profile_image_url_https){
     const u=user.profile_image_url_https.replace('_normal','_400x400');const buf=Buffer.from(await (await fetch(u)).arrayBuffer());
     const p=uid+'/avatar-'+Date.now()+'.jpg';const up=await sb.storage.from('forum').upload(p,buf,{contentType:'image/jpeg'});
