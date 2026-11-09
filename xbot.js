@@ -24,8 +24,7 @@ function decide(t,handle){
   const q=t.quoted_status,qid=t.quoted_status_id_str||(q&&q.id_str)||null;
   if(qid){const qu=q&&q.user&&q.user.screen_name;if(!qu||qu.toLowerCase()!==me)return{skip:'quotes another account'}}
   const media=(t.extended_entities&&t.extended_entities.media)||(t.entities&&t.entities.media)||[];
-  if(media.some(m=>m.type!=='photo'))return{skip:'video or gif'};
-  return{ok:true,quoteOf:qid,photos:media.map(m=>m.media_url_https)};
+  return{ok:true,quoteOf:qid,photos:media.filter(m=>m.type==='photo').map(m=>m.media_url_https)};
 }
 function cleanText(t){
   let s=t.full_text||t.text||'';
