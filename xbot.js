@@ -32,7 +32,10 @@ function cleanText(t){
   ents.forEach(u=>{if(!u.url)return;s=s.split(u.url).join(u.expanded_url&&!/^https?:\/\/(x|twitter)\.com\//.test(u.expanded_url)&&!u.media_url_https?u.expanded_url:'')});
   s=s.replace(/&amp;/g,'&').replace(/&lt;/g,'<').replace(/&gt;/g,'>');
   if(Array.isArray(t.display_text_range)&&!ents.length)s=Array.from(s).slice(t.display_text_range[0],t.display_text_range[1]).join('');
-  return s.replace(/[ \t]+\n/g,'\n').replace(/\n{3,}/g,'\n\n').trim();
+  s=s.replace(/[ \t]+\n/g,'\n').replace(/\n{3,}/g,'\n\n').trim();
+  const own=t.id_str&&((t.entities&&t.entities.urls)||[]).some(u=>(u.expanded_url||'').includes('/status/'+t.id_str));
+  if(t.id_str&&(t.truncated||own))s+='…\n\nRead the full post on X: https://x.com/i/status/'+t.id_str;
+  return s;
 }
 module.exports={decide,cleanText};
 if(require.main!==module)return;
